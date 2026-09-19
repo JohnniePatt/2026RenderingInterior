@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="./camera.css">
+<style>
+*{box-sizing:border-box}body{margin:0;font:12px system-ui;color:#bfcbd5;background:#111b25}
+#viewport{height:610px;position:relative;border:1px solid #304151;border-radius:8px;overflow:hidden}
+canvas{display:block;touch-action:none;outline:none}#tools{position:absolute;top:14px;left:14px;z-index:2;display:flex;gap:6px}
+button{background:#253646;color:#e6eef4;border:1px solid #496071;border-radius:5px;padding:7px 10px;cursor:pointer}
+button:hover{background:#36516a}#legend{position:absolute;right:14px;top:18px;pointer-events:none}
+#footer{position:absolute;bottom:0;left:0;right:0;padding:10px 14px;background:#17232ee8;display:flex;justify-content:space-between;pointer-events:none}
+#error{position:absolute;inset:90px 30px;color:#ffa99d;white-space:pre-wrap;pointer-events:none}
+</style></head>
+<body>
+<div id="annotation-workspace" class="split-view">
+  <div id="viewport" class="camera-view">
+    <div id="tools"><button id="fit">Fit to view</button><button id="clear">Clear selection</button></div>
+    <div id="legend">Wall <span style="color:#fbad65">━</span> &nbsp; Floor <span style="color:#65cbb7">━</span> &nbsp; Furniture <span style="color:#b99af7">━</span><span style="color:#f59e0b">━</span><span style="color:#38bdf8">━</span> &nbsp; Void <span style="color:#6bbfff">━</span></div>
+    <div id="error"></div><div id="footer"><span>2D PLAN · XY</span><span id="status">Loading drawing…</span><span>Scroll: zoom · Drag: pan · Shift + click: multi-select</span></div>
+  </div>
+  <div id="annotation-preview-host" class="preview-pane"></div>
+</div>
+<script type="module" src="./viewer.js"></script></body></html>
