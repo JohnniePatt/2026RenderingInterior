@@ -124,7 +124,7 @@ def test_save_conditioning_outputs(tmp_path):
         "proxy.png", "depth.png", "depth.npy",
         "instance.png", "instance.npy",
         "semantic.png", "semantic.npy",
-        "metadata.json"
+        "metadata.json", "planar.png", "homography.json", "layout.json"
     ]
     for f in expected_files:
         assert (output_dir / f).exists(), f"Missing file: {f}"
@@ -155,15 +155,137 @@ def test_save_conditioning_outputs(tmp_path):
     assert meta["camera_id"] == "camera_001"
     assert meta["resolution"] == {"width": 4, "height": 4}
     assert "K" in meta["matrices"]
+    assert "instance_color_mapping" in meta
 
     # Verify layout.json outputs registration and deduplication
     updated_layout = read(root)
     assert "outputs" in updated_layout
     assert "generated/camera_001/proxy.png" in updated_layout["outputs"]["proxy"]
     assert "generated/camera_001/depth.npy" in updated_layout["outputs"]["depth"]
+    assert "instance_mapping" in updated_layout
+    assert "camera_001" in updated_layout["instance_mapping"]
+    cam_mapping = updated_layout["instance_mapping"]["camera_001"]
+    assert cam_mapping["0"]["rgb"] == [0, 0, 0]
+    assert cam_mapping["0"]["entity_id"] is None
+    assert cam_mapping["1"]["entity_id"] == ent_id
+    assert isinstance(cam_mapping["1"]["rgb"], list) and len(cam_mapping["1"]["rgb"]) == 3
+
+    # Verify layout.json exported into output_dir
+    exported_layout = json.loads((output_dir / "layout.json").read_text(encoding="utf-8"))
+    assert exported_layout["instance_mapping"]["camera_001"]["1"]["entity_id"] == ent_id
 
     save_conditioning_outputs(root, updated_layout, payload)
     layout_reloaded = read(root)
     assert layout_reloaded["outputs"]["proxy"].count("generated/camera_001/proxy.png") == 1
     assert layout_reloaded["outputs"]["depth"].count("generated/camera_001/depth.npy") == 1
+
+
+def test_instance_color_mapping_and_resolution():
+    from app.geometry.conditioning import (
+        build_camera_instance_color_mapping,
+        resolve_instance_by_rgb,
+        resolve_instance_by_id,
+        get_visible_instances,
+        get_instance_rgb
+    )
+    state = {
+        "layout": {"id": "Layout_test"},
+        "entities": {
+            "entity_00001": {
+                "semantic": "furniture",
+                "category": "bed",
+                "description": "bed king size",
+                "height": 0.4,
+                "material": "wood",
+                "notes": "master bedroom"
+            },
+            "entity_00002": {
+                "semantic": "wall",
+                "height": 2.8,
+                "material": "plaster"
+            }
+        },
+        "cameras": {
+            "camera_001": {
+                "position": [0, 0, 1.5],
+                "target": [0, 5, 1.5]
+            }
+        },
+        "instance_mapping": {}
+    }
+
+    # Test building mapping
+    mapping = build_camera_instance_color_mapping(state, "camera_001")
+    assert mapping["0"]["entity_id"] is None
+    assert mapping["0"]["rgb"] == [0, 0, 0]
+    assert mapping["0"]["label"] == "background"
+
+    # Entities should be sorted deterministically
+    assert mapping["1"]["entity_id"] == "entity_00001"
+    assert mapping["1"]["rgb"] == [230, 25, 75]
+    assert mapping["2"]["entity_id"] == "entity_00002"
+    assert mapping["2"]["rgb"] == [60, 180, 75]
+
+    state["instance_mapping"]["camera_001"] = mapping
+
+    # Test resolve_instance_by_id
+    res_1 = resolve_instance_by_id(state, "camera_001", 1)
+    assert res_1["instance_id"] == 1
+    assert res_1["entity_id"] == "entity_00001"
+    assert res_1["category"] == "bed"
+    assert res_1["description"] == "bed king size"
+    assert res_1["height"] == 0.4
+    assert res_1["material"] == "wood"
+    assert res_1["notes"] == "master bedroom"
+    assert res_1["rgb"] == [230, 25, 75]
+
+    # Test resolve background
+    res_0 = resolve_instance_by_id(state, "camera_001", 0)
+    assert res_0["instance_id"] == 0
+    assert res_0["entity_id"] is None
+    assert res_0["semantic"] == "background"
+    assert res_0["rgb"] == [0, 0, 0]
+
+    # Test resolve_instance_by_rgb (exact and with small tolerance)
+    res_rgb = resolve_instance_by_rgb(state, "camera_001", [230, 25, 75])
+    assert res_rgb["entity_id"] == "entity_00001"
+
+    res_rgb_near = resolve_instance_by_rgb(state, "camera_001", [229, 26, 74])
+    assert res_rgb_near["entity_id"] == "entity_00001"
+
+    # Test get_visible_instances fallback (includes auto_ceiling)
+    vis = get_visible_instances(state, "camera_001")
+    assert len(vis) == 3
+    assert vis[0]["entity_id"] == "entity_00001"
+    assert vis[1]["entity_id"] == "entity_00002"
+    assert vis[2]["entity_id"] == "auto_ceiling"
+    assert vis[2]["semantic"] == "ceiling"
+
+
+def test_get_visible_instances_with_npy(tmp_path):
+    from app.geometry.conditioning import get_visible_instances, build_camera_instance_color_mapping
+    root = tmp_path / "test_root"
+    out_dir = root / "generated" / "camera_001"
+    out_dir.mkdir(parents=True)
+
+    state = {
+        "layout": {"id": "Layout_test"},
+        "entities": {
+            "entity_00001": {"semantic": "furniture", "category": "bed", "height": 0.4},
+            "entity_00002": {"semantic": "wall", "height": 2.8}
+        },
+        "cameras": {"camera_001": {}},
+        "instance_mapping": {}
+    }
+    state["instance_mapping"]["camera_001"] = build_camera_instance_color_mapping(state, "camera_001")
+
+    # Only instance 1 is visible in instance.npy (instance 2 is occluded / outside frame)
+    arr = np.array([[0, 0], [1, 1]], dtype=np.int32)
+    np.save(out_dir / "instance.npy", arr)
+
+    visible = get_visible_instances(state, "camera_001", root=root)
+    assert len(visible) == 1
+    assert visible[0]["instance_id"] == 1
+    assert visible[0]["entity_id"] == "entity_00001"
+
 

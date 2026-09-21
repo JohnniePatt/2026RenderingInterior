@@ -43,6 +43,78 @@ def build_instance_mapping(state):
     return mapping
 
 
+INSTANCE_PALETTE = [
+    [230, 25, 75],    # 0xe6194b
+    [60, 180, 75],    # 0x3cb44b
+    [255, 225, 25],   # 0xffe119
+    [67, 99, 216],    # 0x4363d8
+    [245, 130, 49],   # 0xf58231
+    [145, 30, 180],   # 0x911eb4
+    [66, 212, 244],   # 0x42d4f4
+    [240, 50, 230],   # 0xf032e6
+    [191, 239, 69],   # 0xbfef45
+    [250, 190, 190],  # 0xfabebe
+    [70, 153, 144],   # 0x469990
+    [230, 190, 255],  # 0xe6beff
+    [154, 99, 36],    # 0x9a6324
+    [255, 250, 200],  # 0xfffac8
+    [128, 0, 0],      # 0x800000
+    [170, 255, 195],  # 0xaaffc3
+    [128, 128, 0],    # 0x808000
+    [255, 216, 177],  # 0xffd8b1
+    [0, 0, 117],      # 0x000075
+    [128, 128, 128],  # 0x808080
+]
+
+
+def get_instance_rgb(inst_id: int) -> list:
+    """Return deterministic RGB color [R, G, B] for a given integer instance ID.
+
+    ID 0 is strictly reserved for background: [0, 0, 0].
+    """
+    if inst_id <= 0:
+        return [0, 0, 0]
+    return list(INSTANCE_PALETTE[(inst_id - 1) % len(INSTANCE_PALETTE)])
+
+
+def build_camera_instance_color_mapping(state, camera_id=None, client_mapping=None):
+    """Build authoritative instance color mapping dict for a camera.
+
+    Structure:
+    {
+      "0": {"entity_id": None, "rgb": [0, 0, 0], "label": "background"},
+      "1": {"entity_id": "entity_00001", "rgb": [230, 25, 75]},
+      ...
+    }
+    """
+    if isinstance(client_mapping, dict) and "0" in client_mapping:
+        valid = True
+        for k, v in client_mapping.items():
+            if not isinstance(v, dict) or "rgb" not in v:
+                valid = False
+                break
+        if valid:
+            return client_mapping
+
+    raw_mapping = build_instance_mapping(state)
+    result = {
+        "0": {
+            "entity_id": None,
+            "rgb": [0, 0, 0],
+            "label": "background"
+        }
+    }
+    for inst_id_str, ent_id in raw_mapping.items():
+        if inst_id_str == "0":
+            continue
+        inst_id = int(inst_id_str)
+        result[inst_id_str] = {
+            "entity_id": ent_id,
+            "rgb": get_instance_rgb(inst_id)
+        }
+    return result
+
+
 def build_conditioning_metadata(state, camera_id, resolution):
     """Construct authoritative metadata dictionary for exported camera conditioning passes."""
     camera = state["cameras"][camera_id]
@@ -198,7 +270,12 @@ def save_conditioning_outputs(root, state, payload):
     (output_dir / "homography.json").write_text(json.dumps(homo_doc, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
 
     # 6. Build and save authoritative metadata.json
+    client_inst_map = payload.get("instance_mapping")
+    cam_inst_map = build_camera_instance_color_mapping(state, camera_id, client_mapping=client_inst_map)
+    state.setdefault("instance_mapping", {})[camera_id] = cam_inst_map
+
     metadata = build_conditioning_metadata(state, camera_id, {"width": width, "height": height})
+    metadata["instance_color_mapping"] = cam_inst_map
     metadata["planar"] = {
         "image": "planar.png",
         "homography": "homography.json",
@@ -222,6 +299,10 @@ def save_conditioning_outputs(root, state, payload):
         outputs[key] = list(dict.fromkeys([*existing, path]))
 
     save(root, state)
+
+    # 8. Export layout.json copy to output directory
+    (output_dir / "layout.json").write_text(json.dumps(state, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+
     return {
         "output_dir": str(output_dir),
         "files": [
@@ -229,6 +310,124 @@ def save_conditioning_outputs(root, state, payload):
             "instance.png", "instance.npy",
             "semantic.png", "semantic.npy",
             "planar.png", "homography.json",
-            "metadata.json"
+            "metadata.json", "layout.json"
         ]
     }
+
+
+def resolve_instance_by_id(state, camera_id, instance_id: int) -> dict:
+    """Resolve an integer instance_id to its full structured entity metadata.
+
+    The single source of truth for entity metadata remains state['entities'].
+    """
+    cam_mapping = state.get("instance_mapping", {}).get(camera_id)
+    if not cam_mapping:
+        cam_mapping = build_camera_instance_color_mapping(state, camera_id)
+
+    inst_str = str(instance_id)
+    rec = cam_mapping.get(inst_str)
+    if not rec:
+        rec = {
+            "entity_id": None,
+            "rgb": get_instance_rgb(instance_id)
+        }
+
+    ent_id = rec.get("entity_id")
+    rgb = rec.get("rgb", get_instance_rgb(instance_id))
+
+    if instance_id == 0 or ent_id is None:
+        return {
+            "rgb": rgb,
+            "instance_id": 0,
+            "entity_id": None,
+            "semantic": "background",
+            "category": "background",
+            "description": "",
+            "height": None,
+            "material": None,
+            "notes": ""
+        }
+
+    if ent_id == "auto_ceiling":
+        c_info = state.get("ceiling") or {}
+        ps = state.get("proxy_settings") or {}
+        return {
+            "rgb": rgb,
+            "instance_id": instance_id,
+            "entity_id": "auto_ceiling",
+            "semantic": "ceiling",
+            "category": "ceiling",
+            "description": c_info.get("description") or ps.get("ceiling_description", ""),
+            "height": c_info.get("elevation") or ps.get("ceiling_height"),
+            "material": c_info.get("material") or ps.get("ceiling_material"),
+            "notes": ""
+        }
+
+    ent = state.get("entities", {}).get(ent_id, {})
+    height = ent.get("height")
+    if height is None:
+        height = ent.get("opening_height")
+
+    return {
+        "rgb": rgb,
+        "instance_id": instance_id,
+        "entity_id": ent_id,
+        "semantic": ent.get("semantic"),
+        "category": ent.get("category"),
+        "description": ent.get("description", ""),
+        "height": height,
+        "material": ent.get("material"),
+        "notes": ent.get("notes", "")
+    }
+
+
+def resolve_instance_by_rgb(state, camera_id, rgb, tolerance=5) -> dict:
+    """Resolve an [R, G, B] color to its instance_id, entity_id, and full entity metadata."""
+    cam_mapping = state.get("instance_mapping", {}).get(camera_id)
+    if not cam_mapping:
+        cam_mapping = build_camera_instance_color_mapping(state, camera_id)
+
+    target_rgb = np.array(rgb, dtype=float)
+    best_inst_id = None
+    best_dist = float("inf")
+
+    for inst_id_str, rec in cam_mapping.items():
+        c_rgb = np.array(rec.get("rgb", [0, 0, 0]), dtype=float)
+        dist = np.linalg.norm(target_rgb - c_rgb)
+        if dist < best_dist:
+            best_dist = dist
+            best_inst_id = inst_id_str
+
+    if best_inst_id is None:
+        best_inst_id = "0"
+
+    return resolve_instance_by_id(state, camera_id, int(best_inst_id))
+
+
+def get_visible_instances(state, camera_id, root=None) -> list:
+    """Return all visible instances for a camera in a structured form.
+
+    Reads generated/{camera_id}/instance.npy if available to find instances actually in view.
+    If instance.npy is not available, returns all non-background instances mapped for the camera.
+    """
+    cam_mapping = state.get("instance_mapping", {}).get(camera_id)
+    if not cam_mapping:
+        cam_mapping = build_camera_instance_color_mapping(state, camera_id)
+
+    visible_ids = set()
+    if root is not None:
+        npy_path = Path(root) / "generated" / camera_id / "instance.npy"
+        if npy_path.exists():
+            try:
+                arr = np.load(npy_path)
+                unique_ids = np.unique(arr)
+                visible_ids = {int(i) for i in unique_ids if i > 0 and str(i) in cam_mapping}
+            except Exception:
+                pass
+
+    if not visible_ids:
+        # Fallback: all non-zero IDs from mapping
+        visible_ids = {int(k) for k in cam_mapping.keys() if k != "0"}
+
+    sorted_ids = sorted(visible_ids)
+    return [resolve_instance_by_id(state, camera_id, inst_id) for inst_id in sorted_ids]

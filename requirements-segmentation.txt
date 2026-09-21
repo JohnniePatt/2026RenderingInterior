@@ -1,0 +1,6 @@
+# Optional local Part 7A backend. Install CPU torch wheels from the PyTorch index
+# when CUDA is not required; model weights are configured separately.
+torch>=2.5,<3
+torchvision>=0.20,<1
+segment-anything @ git+https://github.com/facebookresearch/segment-anything.git@dca509fe793f601edb92606367a655c15ac00fdf
+filelock>=3.16,<4

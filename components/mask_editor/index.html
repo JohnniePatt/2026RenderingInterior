@@ -1,0 +1,29 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><style>
+body{margin:0;background:#111b25;color:#ddd;font:13px system-ui}canvas{display:block;width:100%;height:auto;touch-action:none;cursor:crosshair}#help{padding:8px}
+</style></head><body><canvas id="image" aria-label="Segmentation image canvas"></canvas><div id="help"></div>
+<script>
+const canvas=document.getElementById('image'), ctx=canvas.getContext('2d');
+let args={}, pic=new Image(), start=null, pending=false;
+function send(type,extra={}){parent.postMessage({isStreamlitMessage:true,type,...extra},'*')}
+function height(){send('streamlit:setFrameHeight',{height:canvas.getBoundingClientRect().height+40})}
+function coord(e){let r=canvas.getBoundingClientRect();return [Math.max(0,Math.min(canvas.width-1,(e.clientX-r.left)*canvas.width/r.width)),Math.max(0,Math.min(canvas.height-1,(e.clientY-r.top)*canvas.height/r.height))]}
+function draw(box){ctx.clearRect(0,0,canvas.width,canvas.height);ctx.drawImage(pic,0,0);let p=args.prompts||{};
+ for(let [name,color] of [['positive_points','#36ff91'],['negative_points','#ff5252'],['polygon','#ffe15a']]){
+  for(let [x,y] of p[name]||[]){ctx.beginPath();ctx.arc(x,y,6*canvas.width/canvas.getBoundingClientRect().width,0,Math.PI*2);ctx.fillStyle=color;ctx.fill();ctx.strokeStyle='#111';ctx.stroke()}
+ }
+ let poly=p.polygon||[];if(poly.length>1){ctx.beginPath();ctx.moveTo(...poly[0]);for(let v of poly.slice(1))ctx.lineTo(...v);ctx.strokeStyle='#ffe15a';ctx.lineWidth=2;ctx.stroke()}
+ let b=box||p.box;if(b){ctx.strokeStyle='#ffe15a';ctx.lineWidth=3;ctx.strokeRect(b[0],b[1],b[2]-b[0],b[3]-b[1])}
+}
+function emit(value){pending=true;send('streamlit:setComponentValue',{value:{...value,event_id:crypto.randomUUID(),context:args.context},dataType:'json'})}
+canvas.onpointerdown=e=>{if(pending)return;start=coord(e);canvas.setPointerCapture(e.pointerId)};
+canvas.onpointermove=e=>{if(start&&args.mode==='box'){let end=coord(e);draw([Math.min(start[0],end[0]),Math.min(start[1],end[1]),Math.max(start[0],end[0]),Math.max(start[1],end[1])])}};
+canvas.onpointerup=e=>{if(!start||pending)return;let end=coord(e),first=start;start=null;
+ if(args.mode==='box'){if(Math.abs(end[0]-first[0])<1||Math.abs(end[1]-first[1])<1)return;emit({kind:'box',box:[Math.min(first[0],end[0]),Math.min(first[1],end[1]),Math.max(first[0],end[0]),Math.max(first[1],end[1])]})}
+ else emit({kind:args.mode,point:end});
+};
+canvas.onpointercancel=()=>{start=null};
+window.addEventListener('message',e=>{if(e.source!==parent||e.data.type!=='streamlit:render')return;args=e.data.args;pending=false;pic.onload=()=>{canvas.width=pic.naturalWidth;canvas.height=pic.naturalHeight;draw();height()};pic.src=args.image;document.getElementById('help').textContent=`${args.width} × ${args.height} original pixels · ${args.mode} · Click or drag on the image`;});
+new ResizeObserver(()=>{if(pic.complete&&pic.naturalWidth){draw();height()}}).observe(canvas);
+send('streamlit:componentReady',{apiVersion:1});
+</script></body></html>

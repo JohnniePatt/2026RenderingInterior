@@ -100,10 +100,24 @@ def validate(state):
                 raise ValueError("Ceiling description must be a string")
             if "material" in ceil and ceil["material"] is not None and not isinstance(ceil["material"], str):
                 raise ValueError("Ceiling material must be a string")
+            if ceil.get("reference_image"):
+                relative_path(ceil["reference_image"])
         if state["active_camera"] is not None and state["active_camera"] not in state["cameras"]:
             raise ValueError("Active camera does not exist")
         if not isinstance(state["outputs"], dict) or not isinstance(state["evaluation"], dict):
             raise ValueError("Invalid research state")
+        if "instance_mapping" in state:
+            if not isinstance(state["instance_mapping"], dict):
+                raise ValueError("instance_mapping must be an object")
+            for cam_id, mapping in state["instance_mapping"].items():
+                if not isinstance(mapping, dict):
+                    raise ValueError(f"instance_mapping for camera {cam_id} must be an object")
+                for inst_id, rec in mapping.items():
+                    if not isinstance(rec, dict) or "rgb" not in rec:
+                        raise ValueError(f"Invalid instance record {inst_id} in camera {cam_id}")
+                    rgb = rec["rgb"]
+                    if not isinstance(rgb, (list, tuple)) or len(rgb) != 3 or not all(isinstance(c, int) and 0 <= c <= 255 for c in rgb):
+                        raise ValueError(f"Invalid RGB color {rgb} for instance {inst_id} in camera {cam_id}")
     except (KeyError, TypeError, AttributeError) as exc:
         raise ValueError(f"Malformed layout.json: {exc}") from exc
 
@@ -115,6 +129,7 @@ def new_state(layout_id, name, source):
         "layout": {"id": layout_id, "name": name.strip(), "status": "new", "created_at": now, "updated_at": now},
         "source": {"cad_file": source, "format": "DXF", "units": "unknown"},
         "entities": {}, "cameras": {}, "active_camera": None,
+        "instance_mapping": {},
         "outputs": {key: [] for key in ("proxy", "depth", "instance", "semantic", "planar", "renders")},
         "evaluation": {},
     }
@@ -122,6 +137,7 @@ def new_state(layout_id, name, source):
 
 def migrate_entities_and_cameras(state):
     state.setdefault("outputs", {}).setdefault("planar", [])
+    state.setdefault("instance_mapping", {})
     for entity in state.get("entities", {}).values():
         if entity.get("semantic") == "void":
             cat = entity.get("category", "door")

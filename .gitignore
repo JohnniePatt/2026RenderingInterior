@@ -5,3 +5,10 @@ __pycache__/
 workspace/*
 !workspace/.gitkeep
 test-results/
+
+# Local API credentials & secrets
+local_api_configs/
+.env
+.env.*
+*.key
+local_segmentation/

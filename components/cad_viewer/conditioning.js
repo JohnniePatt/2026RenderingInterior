@@ -144,7 +144,7 @@ export function applyPass(scene, mode, idToInstance, unitScale = 1.0, bounds = n
         obj.material = createDepthVisMaterial(unitScale, near, far);
       } else if (mode === 'instance') {
         const instId = idToInstance[entId] ?? 0;
-        const colorHex = instId > 0 ? INSTANCE_PALETTE[(instId - 1) % INSTANCE_PALETTE.length] : 0x111b25;
+        const colorHex = instId > 0 ? INSTANCE_PALETTE[(instId - 1) % INSTANCE_PALETTE.length] : 0x000000;
         obj.material = new THREE.MeshBasicMaterial({ color: colorHex, side: THREE.DoubleSide });
       } else if (mode === 'semantic') {
         const classId = SEMANTIC_CLASSES[semantic] ?? 0;
@@ -190,7 +190,8 @@ export function renderOffscreenPasses(scene, camera, width, height, idToInstance
   }
 
   // Helper to freeze materials and render
-  const renderToDataUrl = (prepareFn, clearColor = 0x000000, clearAlpha = 1.0, showEdges = false) => {
+  const renderToDataUrl = (prepareFn, clearColor = 0x000000, clearAlpha = 1.0, showEdges = false, isRaw = false) => {
+    renderer.outputColorSpace = isRaw ? THREE.LinearSRGBColorSpace : THREE.SRGBColorSpace;
     scene.traverse(obj => {
       if (obj.isLineSegments || obj.isLine) {
         if (obj.layers.isEnabled(1)) obj.visible = showEdges;
@@ -207,22 +208,22 @@ export function renderOffscreenPasses(scene, camera, width, height, idToInstance
   };
 
   // 1. Proxy RGB
-  const proxy_png = renderToDataUrl(obj => obj.userData.proxyMaterial, 0x29333d, 1.0, true);
+  const proxy_png = renderToDataUrl(obj => obj.userData.proxyMaterial, 0x29333d, 1.0, true, false);
 
   // 2. Depth Vis (Normalized grayscale)
   const depthVisMat = createDepthVisMaterial(unitScale, near, far);
-  const depth_vis_png = renderToDataUrl(() => depthVisMat, 0x000000, 1.0, false);
+  const depth_vis_png = renderToDataUrl(() => depthVisMat, 0x000000, 1.0, false, false);
 
   // 3. Depth Raw (Encoded mm in RGB, Alpha=0 for background)
   const depthRawMat = createDepthRawMaterial(unitScale);
-  const depth_raw_png = renderToDataUrl(() => depthRawMat, 0x000000, 0.0, false);
+  const depth_raw_png = renderToDataUrl(() => depthRawMat, 0x000000, 0.0, false, true);
 
-  // 4. Instance Vis (Distinct color per instance)
+  // 4. Instance Vis (Distinct color per instance, background [0, 0, 0])
   const instance_vis_png = renderToDataUrl(obj => {
     const instId = idToInstance[obj.userData.entityId] ?? 0;
-    const col = instId > 0 ? INSTANCE_PALETTE[(instId - 1) % INSTANCE_PALETTE.length] : 0x111b25;
+    const col = instId > 0 ? INSTANCE_PALETTE[(instId - 1) % INSTANCE_PALETTE.length] : 0x000000;
     return new THREE.MeshBasicMaterial({ color: col, side: THREE.DoubleSide });
-  }, 0x111b25, 1.0, false);
+  }, 0x000000, 1.0, false, false);
 
   // 5. Instance Raw (R + G*256 encodes exact integer ID, Alpha=0 for background)
   const instance_raw_png = renderToDataUrl(obj => {
@@ -230,21 +231,41 @@ export function renderOffscreenPasses(scene, camera, width, height, idToInstance
     const r = (instId % 256) / 255.0;
     const g = (Math.floor(instId / 256) % 256) / 255.0;
     return new THREE.MeshBasicMaterial({ color: new THREE.Color(r, g, 0), side: THREE.DoubleSide });
-  }, 0x000000, 0.0, false);
+  }, 0x000000, 0.0, false, true);
+
+  // Build exact instance color mapping for layout.json
+  const instance_mapping = {
+    "0": {
+      entity_id: null,
+      rgb: [0, 0, 0],
+      label: "background"
+    }
+  };
+  for (const [entId, instId] of Object.entries(idToInstance || {})) {
+    if (instId === 0) continue;
+    const hex = INSTANCE_PALETTE[(instId - 1) % INSTANCE_PALETTE.length];
+    const r = (hex >> 16) & 255;
+    const g = (hex >> 8) & 255;
+    const b = hex & 255;
+    instance_mapping[String(instId)] = {
+      entity_id: entId,
+      rgb: [r, g, b]
+    };
+  }
 
   // 6. Semantic Vis (Colorized semantic classes)
   const semantic_vis_png = renderToDataUrl(obj => {
     const classId = SEMANTIC_CLASSES[obj.userData.semantic] ?? 0;
     const col = SEMANTIC_COLORS[classId] ?? 0x111b25;
     return new THREE.MeshBasicMaterial({ color: col, side: THREE.DoubleSide });
-  }, 0x111b25, 1.0, false);
+  }, 0x111b25, 1.0, false, false);
 
   // 7. Semantic Raw (R encodes exact class ID, Alpha=0 for background)
   const semantic_raw_png = renderToDataUrl(obj => {
     const classId = SEMANTIC_CLASSES[obj.userData.semantic] ?? 0;
     const r = classId / 255.0;
     return new THREE.MeshBasicMaterial({ color: new THREE.Color(r, 0, 0), side: THREE.DoubleSide });
-  }, 0x000000, 0.0, false);
+  }, 0x000000, 0.0, false, true);
 
   // 8. Planar Conditioning Map (Projected via Homography H, no 3D extrusion)
   let planar_png = null;
@@ -281,6 +302,7 @@ export function renderOffscreenPasses(scene, camera, width, height, idToInstance
     instance_raw_png,
     semantic_vis_png,
     semantic_raw_png,
-    planar_png
+    planar_png,
+    instance_mapping
   };
 }

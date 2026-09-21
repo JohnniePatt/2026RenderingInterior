@@ -11,6 +11,8 @@ from app.geometry.proxy import build_proxy, compute_furniture_colors
 from app.layout.persistence import save
 from app.ui.properties_panel import render as properties
 from app.ui.viewer import cad_viewer
+from app.ui import generate_image, segment_reference
+from app.ui import spatial_validation
 
 
 def render(workspace):
@@ -47,7 +49,22 @@ def render(workspace):
     selection_key = f"selection_{root.name}"
     valid = {item["id"] for item in geometry}
     selected = [i for i in st.session_state.get(selection_key, []) if i in valid]
-    mode = st.radio("Editing mode", ["Annotation Mode", "Camera Mode"], horizontal=True, key=f"mode_{root.name}")
+    mode = st.radio(
+        "Editing mode",
+        ["Annotation Mode", "Camera Mode", "Generate Image", "Segment to Reference", "Spatial Validation"],
+        horizontal=True,
+        key=f"mode_{root.name}",
+    )
+    if mode == "Generate Image":
+        generate_image.render(root, state)
+        return
+    elif mode == "Segment to Reference":
+        segment_reference.render(root, state)
+        return
+    elif mode == "Spatial Validation":
+        spatial_validation.render(root, state)
+        return
+
     camera_mode = mode == "Camera Mode"
 
     if camera_mode:

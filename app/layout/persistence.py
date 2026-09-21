@@ -72,6 +72,7 @@ def save(root, state):
 
             c_desc = ps.get("ceiling_description") or candidate.get("ceiling", {}).get("description") or ""
             c_mat = ps.get("ceiling_material") or candidate.get("ceiling", {}).get("material")
+            c_ref = candidate.get("ceiling", {}).get("reference_image")
 
             candidate["ceiling"] = {
                 "enabled": bool(auto_ceiling),
@@ -81,6 +82,8 @@ def save(root, state):
                 "material": c_mat or None,
                 "source": c_source
             }
+            if c_ref:
+                candidate["ceiling"]["reference_image"] = c_ref
             state["ceiling"] = deepcopy(candidate["ceiling"])
             state["proxy_settings"] = deepcopy(candidate["proxy_settings"])
 
