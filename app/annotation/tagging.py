@@ -6,6 +6,7 @@ import numpy as np
 from app.layout.manager import safe_filename
 from app.layout.persistence import resolve, save
 from app.layout.schema import validate
+from services.validation_concepts import resolve_concept
 
 CATEGORIES = ["sofa", "chair", "dining_table", "coffee_table", "bed", "wardrobe", "cabinet", "desk", "refrigerator", "other"]
 FIELDS = {
@@ -32,6 +33,14 @@ def apply(root, state, ids, semantic, properties):
             record.pop(key, None)
         record["semantic"] = semantic
         record.update({k: v for k, v in properties.items() if k in FIELDS[semantic]})
+        if 'validation_concept' in properties:
+            if not isinstance(properties['validation_concept'], str):
+                raise ValueError('Validation Concept must be text.')
+            record['validation_concept'] = properties['validation_concept'].strip()
+        elif not record.get('validation_concept'):
+            inferred = resolve_concept(record)
+            if not inferred['needs_review']:
+                record['validation_concept'] = inferred['concept']
         if semantic == "wall":
             if "height" not in record:
                 raise ValueError("Missing height")

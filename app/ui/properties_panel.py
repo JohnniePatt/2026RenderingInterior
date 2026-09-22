@@ -5,6 +5,7 @@ from app.cad.units import from_mm
 from app.layout.persistence import resolve
 from app.layout.schema import VOID_CATEGORIES
 from app.geometry.proxy import compute_furniture_colors
+from services.validation_concepts import resolve_concept
 
 
 def render(root, state, selected, tool):
@@ -99,6 +100,11 @@ def render(root, state, selected, tool):
             upload = st.file_uploader("Furniture reference", type=["png", "jpg", "jpeg", "webp"], key=f"upload_{suffix}")
             remove = st.checkbox("Remove reference image", key=f"remove_{suffix}")
         props["description"] = st.text_area("Description", value=val("description", ""), key=f"description_{suffix}")
+        concept = resolve_concept({**record, **props, 'semantic': semantic})
+        if concept['warning']:
+            st.warning(concept['warning'])
+        props['validation_concept'] = st.text_input('Validation Concept', value=concept['concept'],
+            key=f'validation_concept_{suffix}', help='Short concept for SAM 3, e.g. bed or dining table. Apply saves this value; your explicit concept is preserved.')
         props["material"] = st.text_input("Material", value=val("material", "") or "", key=f"material_{suffix}") or None
         props["notes"] = st.text_area("Notes", value=val("notes", ""), key=f"notes_{suffix}")
         submitted = st.button("Apply & autosave", type="primary", disabled=unit.startswith("unknown"), key=f"apply_{suffix}")

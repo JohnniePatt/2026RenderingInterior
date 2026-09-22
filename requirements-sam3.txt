@@ -1,0 +1,3 @@
+# Install torch/torchvision (CPU or CUDA) separately for the local machine.
+transformers>=5.0,<6
+filelock>=3.16,<4

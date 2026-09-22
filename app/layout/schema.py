@@ -45,6 +45,8 @@ def validate(state):
         if not isinstance(state["entities"], dict) or not isinstance(state["cameras"], dict):
             raise ValueError("Entities and cameras must be objects")
         for entity in state["entities"].values():
+            if isinstance(entity, dict) and entity.get('validation_concept') is not None and not isinstance(entity['validation_concept'], str):
+                raise ValueError('Validation Concept must be text')
             if not isinstance(entity, dict) or entity.get("semantic") not in SEMANTICS:
                 raise ValueError("Invalid entity semantic")
             if not isinstance(entity.get("dxf_handle"), str) or not entity["dxf_handle"]:
@@ -185,4 +187,3 @@ def migrate_entities_and_cameras(state):
                 "material": ps.get("ceiling_material"),
                 "source": "explicit_ceiling_height" if ps.get("ceiling_height") is not None else "auto_wall_top"
             }
-

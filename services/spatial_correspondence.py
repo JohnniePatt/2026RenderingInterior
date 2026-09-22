@@ -45,7 +45,7 @@ def polygon_mask(size, points):
     return np.asarray(canvas) > 0
 
 
-def load_context(root, state, camera_id, render_name):
+def load_context(root, state, camera_id, render_name, namespace=None):
     root = Path(root).resolve()
     folder = (root / 'generated' / camera_id / 'renders').resolve()
     render = (folder / render_name).resolve()
@@ -54,6 +54,9 @@ def load_context(root, state, camera_id, render_name):
     data = render.read_bytes()
     image = Image.open(BytesIO(data)).convert('RGB')
     evaluation = folder / 'evaluation' / render.stem
+    if namespace is not None:
+        if namespace != 'sam3': raise ValueError('Unknown evaluation namespace.')
+        evaluation = evaluation / namespace
     doc_path = evaluation / 'correspondence.json'
     doc = json.loads(doc_path.read_text()) if doc_path.exists() else None
     metadata = json.loads(render.with_suffix('.json').read_text()) if render.with_suffix('.json').exists() else {}

@@ -1,6 +1,17 @@
 # CAD-to-Rendering Research Tool: AI Integration & Development Log (AI_README.md)
 
-## ล่าสุด — Part 7A Human-Guided SAM Spatial Correspondence
+## ล่าสุด — Part 7A CAD-Guided SAM 3 Automatic Correspondence (2026-09-22)
+
+- แทนหน้า human-first ด้วย SAM 3 concept queries; เพิ่ม Validation Concept ใน Properties ตามข้อกำหนด ไม่เปลี่ยน generation หรือ Segment to Reference
+- concept ซ้ำ query ครั้งเดียว; single strong = auto_matched แต่ human_verified=false; multiple = ambiguous หรือ one-to-one centroid assignment; zero = missing_candidate ไม่ใช่ยืนยันว่าของหาย
+- มี Confirm/Reject, เลือก candidate, SAM 3 point/box fallback, polygon และ hallucination review แยก; ไม่คำนวณ SAS/IoU/errors
+- บันทึกแยก `renders/evaluation/<render_id>/sam3/`; รักษาข้อมูล manual รุ่นเก่า, native resolution, GT snapshot, provenance, revision locking และ human decisions
+- ติดตั้ง Transformers 5.17.0 และตรวจ API จริงแล้ว **ยังไม่มี SAM 3 checkpoint และยังไม่ได้ล็อกอิน Hugging Face จึงยังไม่ผ่าน acceptance ด้วย pretrained SAM 3 จริง**; ไม่ใช้ SAM ViT-B แทนแล้วเรียกว่า SAM 3
+- tests ใช้ detector/adapter test doubles อย่างชัดเจน; คู่มือ `docs/PART_7A.md`, setup `scripts/setup_sam3.py`, dependencies `requirements-sam3.txt`
+- ไม่เรียก paid generation API; หลังได้รับสิทธิ์ facebook/sam3 ให้ทดสอบ local inference กับ render ที่มีอยู่
+- ตรวจล่าสุด: **151 passed, 2 skipped**; browser แยกทดสอบ SAM 3 page, native-coordinate polygon, Confirm และ reload persistence ผ่าน โดยไม่ใช้ model inference หรือ paid API
+
+## ประวัติ — Part 7A Human-Guided SAM Spatial Correspondence (ถูกแทนด้วย SAM 3)
 
 - เพิ่มหน้า `Spatial Validation` ผ่าน navigation เท่านั้น ไม่เปลี่ยนการทำงาน Parts 1–6 หรือ Segment to Reference
 - เลือกกล้อง/render/entity จาก visible IDs ใน instance.npy; GT mask สร้างจาก ID โดยตรง ผู้ใช้เป็นผู้เลือก semantic correspondence
