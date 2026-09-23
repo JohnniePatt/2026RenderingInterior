@@ -18,6 +18,8 @@ try:
     if page == "add":
         add_layout.render(workspace)
     elif page == "editor" and st.session_state.get("active_layout"):
+        import importlib
+        importlib.reload(layout_editor)
         layout_editor.render(workspace)
     else:
         home.render(workspace)

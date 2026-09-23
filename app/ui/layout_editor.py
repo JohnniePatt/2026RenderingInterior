@@ -62,6 +62,8 @@ def render(workspace):
         segment_reference.render(root, state)
         return
     elif mode == "Spatial Validation":
+        import importlib
+        importlib.reload(spatial_validation)
         spatial_validation.render(root, state)
         return
 

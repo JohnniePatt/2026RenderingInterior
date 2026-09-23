@@ -31,7 +31,8 @@ export function createCameraWorkspace(send) {
               <option value="1:1">1:1 Square (1024×1024)</option>
               <option value="4:3">4:3 Standard (1024×768)</option>
               <option value="3:2">3:2 Classic (1200×800)</option>
-              <option value="16:9">16:9 Widescreen (1920×1080)</option>
+              <option value="16:9">16:9 Gemini AI (1376×768)</option>
+              <option value="16:9-fhd">16:9 Full HD (1920×1080)</option>
               <option value="custom">Custom</option>
             </select>
           </label>
@@ -148,7 +149,8 @@ export function createCameraWorkspace(send) {
         if(w===1024&&h===1024) presetSelect.value='1:1';
         else if(w===1024&&h===768) presetSelect.value='4:3';
         else if(w===1200&&h===800) presetSelect.value='3:2';
-        else if(w===1920&&h===1080) presetSelect.value='16:9';
+        else if(w===1376&&h===768) presetSelect.value='16:9';
+        else if(w===1920&&h===1080) presetSelect.value='16:9-fhd';
         else presetSelect.value='custom';
       }
     }
@@ -394,7 +396,8 @@ export function createCameraWorkspace(send) {
       if(presetSelect.value==='1:1'){data.output.width=1024;data.output.height=1024;}
       else if(presetSelect.value==='4:3'){data.output.width=1024;data.output.height=768;}
       else if(presetSelect.value==='3:2'){data.output.width=1200;data.output.height=800;}
-      else if(presetSelect.value==='16:9'){data.output.width=1920;data.output.height=1080;}
+      else if(presetSelect.value==='16:9'){data.output.width=1376;data.output.height=768;}
+      else if(presetSelect.value==='16:9-fhd'){data.output.width=1920;data.output.height=1080;}
       dirty=true;syncControls();render();commit();
     };
   }
